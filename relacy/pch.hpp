@@ -55,6 +55,14 @@
 #   define RL_WIN
 #endif
 
+#if !defined(RL_WIN) && !defined(_CYGWIN)
+#   if defined(__aarch64__) && defined(__APPLE__)
+#       define RL_USE_ARM64_APPLE_FIBERS
+#   else
+#       define RL_USE_POSIX_UCONTEXT
+#   endif
+#endif
+
 #if defined(RL_WIN) || defined(_CYGWIN)
 #   ifndef _WIN32_WINNT
 #       define _WIN32_WINNT 0x0500
@@ -72,7 +80,9 @@
 #   include <stdint.h>
 #   include <sys/times.h>
 #   include <unistd.h>
-#   include <ucontext.h>
+#   ifdef RL_USE_POSIX_UCONTEXT
+#       include <ucontext.h>
+#   endif
 #   include <setjmp.h>
 #endif
 

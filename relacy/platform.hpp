@@ -160,7 +160,81 @@ inline void switch_to_fiber(fiber_t& fib, fiber_t& prev)
     swapcontext(&prev, &fib);
 }
 
-#else
+#elif defined(RL_USE_ARM64_APPLE_FIBERS)
+
+struct fiber_t
+{
+    void*       stack;
+    jmp_buf     jmp;
+};
+
+struct fiber_ctx_t
+{
+    void(*      fnc)(void*);
+    void*       ctx;
+    jmp_buf*    cur;
+    jmp_buf*    prv;
+};
+
+static void fiber_start_fnc(void* p)
+{
+    fiber_ctx_t* ctx = (fiber_ctx_t*)p;
+    void (*volatile ufnc)(void*) = ctx->fnc;
+    void* volatile uctx = ctx->ctx;
+    if (_setjmp(*ctx->cur) == 0)
+    {
+        _longjmp(*ctx->prv, 1);
+    }
+    ufnc(uctx);
+}
+
+inline void create_main_fiber(fiber_t& fib)
+{
+    memset(&fib, 0, sizeof(fib));
+}
+
+inline void delete_main_fiber(fiber_t& fib)
+{
+    (void)fib;
+}
+
+inline void create_fiber(fiber_t& fib, void(*ufnc)(void*), void* uctx)
+{
+    size_t const stack_size = 64*1024;
+    fib.stack = (::malloc)(stack_size);
+    uintptr_t sp = (uintptr_t)fib.stack + stack_size;
+    sp &= ~0xF; // 16-byte alignment
+
+    jmp_buf create_jmp;
+    fiber_ctx_t ctx = {ufnc, uctx, &fib.jmp, &create_jmp};
+
+    if (_setjmp(create_jmp) == 0)
+    {
+        __asm__ volatile (
+            "mov x19, sp\n\t"
+            "mov sp, %0\n\t"
+            "mov x0, %1\n\t"
+            "blr %2\n\t"
+            "mov sp, x19\n\t"
+            :
+            : "r"(sp), "r"(&ctx), "r"(&fiber_start_fnc)
+            : "x0", "x19", "x30", "memory"
+        );
+    }
+}
+
+inline void delete_fiber(fiber_t& fib)
+{
+    //(::free)(fib.stack);
+}
+
+inline void switch_to_fiber(fiber_t& fib, fiber_t& prv)
+{
+    if (_setjmp(prv.jmp) == 0)
+        _longjmp(fib.jmp, 1);
+}
+
+#elif defined(RL_USE_POSIX_UCONTEXT)
 
 struct fiber_t
 {
