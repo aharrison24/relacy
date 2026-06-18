@@ -1254,6 +1254,11 @@ inline void operator delete (void* p, void(*dtor)(void*), rl::debug_info_param i
 }
 #endif
 
+#if defined(__clang__)
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Winline-new-delete"
+#endif
+
 inline void* operator new (size_t size) RL_THROW_SPEC(std::bad_alloc)
 {
     if (rl::is_ctx())
@@ -1304,6 +1309,10 @@ inline void operator delete [] (void* p, size_t sz) noexcept
     else
         (::free)(p);
 }
+#endif
+
+#if defined(__clang__)
+#   pragma clang diagnostic pop
 #endif
 
 #define RL_NEW_PROXY rl::new_proxy($) % new
