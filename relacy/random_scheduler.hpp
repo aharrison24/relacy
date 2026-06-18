@@ -105,7 +105,7 @@ public:
         if (this->iter_ == 8761115)
         {
             char buf [1024];
-            sprintf(buf, "rand(%u, %u) = %u\n", t, limit, r);
+            snprintf(buf, sizeof(buf), "rand(%u, %u) = %u\n", t, limit, r);
             OutputDebugStringA(buf);
         }
 #endif

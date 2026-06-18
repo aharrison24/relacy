@@ -123,7 +123,7 @@ public:
         size_t const count = exec_history_.size();
         if (false == output_history)
         {
-            sprintf(buf, "execution history (%u):\n", (unsigned)count);
+            snprintf(buf, sizeof(buf), "execution history (%u):\n", (unsigned)count);
             out_stream_ << buf;
 #if defined(_MSC_VER) && defined(RL_MSVC_OUTPUT)
             OutputDebugStringA(buf);
@@ -141,7 +141,7 @@ public:
 
         for (thread_id_t th = 0; th != thread_count_; ++th)
         {
-            sprintf(buf, "thread %u:\n", th);
+            snprintf(buf, sizeof(buf), "thread %u:\n", th);
             out_stream_ << buf;
 #if defined(_MSC_VER) && defined(RL_MSVC_OUTPUT)
             OutputDebugStringA(buf);
