@@ -43,32 +43,61 @@ public:
     }
 
 #ifndef RL_GC
-    void* alloc(size_t size)
+    void* alloc(size_t size, size_t align = alignment)
 #else
-    void* alloc(size_t size, void (*dtor)(void*))
+    void* alloc(size_t size, void (*dtor)(void*), size_t align = alignment)
 #endif
     {
         void* pp = 0;
-        for (size_t i = 0; i != alloc_cache_.size(); ++i)
+
+        // Standard alignment allocations can reuse the cache
+        if (align == alignment)
         {
-            if (alloc_cache_[i].first == size)
+            for (size_t i = 0; i != alloc_cache_.size(); ++i)
             {
-                if (alloc_cache_[i].second.size())
+                if (alloc_cache_[i].first == size)
                 {
-                    pp = alloc_cache_[i].second.top();
-                    alloc_cache_[i].second.pop();
+                    if (alloc_cache_[i].second.size())
+                    {
+                        pp = alloc_cache_[i].second.top();
+                        alloc_cache_[i].second.pop();
+                    }
+                    break;
                 }
-                break;
             }
         }
+
         if (0 == pp)
-            pp = (::malloc)(size + alignment);
+        {
+            if (align == alignment)
+            {
+                pp = (::malloc)(size + alignment);
+            }
+            else
+            {
+                size_t const actual_align = (align < sizeof(void*)) ? sizeof(void*) : align;
+                size_t const offset = sizeof(size_t) + sizeof(void*);
+                pp = (::malloc)(size + actual_align + offset);
+            }
+        }
 
         if (pp)
         {
-            RL_VERIFY(alignment >= sizeof(void*));
             *(size_t*)pp = size;
-            void* p = (char*)pp + alignment;
+            void* p = 0;
+            if (align == alignment)
+            {
+                p = (char*)pp + alignment;
+            }
+            else
+            {
+                size_t const actual_align = (align < sizeof(void*)) ? sizeof(void*) : align;
+                size_t const offset = sizeof(size_t) + sizeof(void*);
+                p = (void*)( ((uintptr_t)pp + offset + actual_align - 1) & ~(actual_align - 1) );
+            }
+
+            *(void**)((char*)p - sizeof(void*)) = pp;
+
 #ifndef RL_GC
             allocs_.insert(std::make_pair(p, size));
 #else
@@ -95,10 +124,10 @@ public:
 
         allocs_.erase(iter);
 
-        void* p = (char*)pp - alignment;
+        void* p = *(void**)((char*)pp - sizeof(void*));
         size_t size = *(size_t*)p;
 
-        if (defer)
+        if (defer && ((char*)pp - (char*)p == alignment))
         {
             deferred_free_[deferred_index_ % deferred_count] = p;
             deferred_free_size_[deferred_index_ % deferred_count] = size;
@@ -110,7 +139,14 @@ public:
         }
         else
         {
-            rl_free_impl(p, size);
+            if ((char*)pp - (char*)p == alignment)
+            {
+                rl_free_impl(p, size);
+            }
+            else
+            {
+                (::free)(p);
+            }
         }
         return true;
 #else
@@ -120,8 +156,15 @@ public:
             alloc_desc_t const& desc = gc_allocs_[i];
             if (desc.addr == pp)
             {
-                void* p = (char*)desc.addr - alignment;
-                rl_free_impl(p, desc.size);
+                void* p = *(void**)((char*)desc.addr - sizeof(void*));
+                if ((char*)desc.addr - (char*)p == alignment)
+                {
+                    rl_free_impl(p, desc.size);
+                }
+                else
+                {
+                    (::free)(p);
+                }
                 gc_allocs_.erase(gc_allocs_.begin() + i);
                 return true;
             }
@@ -140,8 +183,15 @@ public:
             alloc_desc_t const& desc = gc_allocs_[i];
             if (desc.dtor)
                 desc.dtor(desc.addr);
-            void* p = (char*)desc.addr - alignment;
-            rl_free_impl(p, desc.size);
+            void* p = *(void**)((char*)desc.addr - sizeof(void*));
+            if ((char*)desc.addr - (char*)p == alignment)
+            {
+                rl_free_impl(p, desc.size);
+            }
+            else
+            {
+                (::free)(p);
+            }
         }
         gc_allocs_.clear();
         return true;

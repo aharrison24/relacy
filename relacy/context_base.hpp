@@ -138,7 +138,9 @@ public:
     virtual void free(void* p, bool is_array, debug_info_param info) = 0;
 
     virtual void* alloc(size_t size) = 0;
+    virtual void* alloc(size_t size, size_t align) = 0;
     virtual void free(void* p) = 0;
+    virtual void free(void* p, size_t align) = 0;
     virtual size_t prev_alloc_size() = 0;
     virtual void set_debug_info(debug_info_param info) = 0;
 

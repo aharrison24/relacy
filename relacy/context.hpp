@@ -331,6 +331,32 @@ public:
         return p;
     }
 
+    virtual void* alloc(size_t size, size_t align)
+    {
+        if (disable_alloc_)
+        {
+#if defined(_WIN32)
+            return _aligned_malloc(size, align);
+#else
+            void* ptr = nullptr;
+            size_t const actual_align = (align < sizeof(void*)) ? sizeof(void*) : align;
+            if (::posix_memalign(&ptr, actual_align, size) != 0)
+                return nullptr;
+            return ptr;
+#endif
+        }
+
+        prev_alloc_size_ = size;
+        disable_alloc_ += 1;
+#ifndef RL_GC
+        void* p = (memory_.alloc)(size, align);
+#else
+        void* p = (memory_.alloc)(size, 0, align);
+#endif
+        disable_alloc_ -= 1;
+        return p;
+    }
+
     virtual size_t prev_alloc_size()
     {
         size_t sz = prev_alloc_size_;
@@ -362,6 +388,21 @@ public:
         if (false == memory_.free(p, defer))
             fail_test("incorrect address passed to free() function", test_result_double_free, info);
         disable_alloc_ -= 1;
+    }
+
+    virtual void free(void* p, size_t align)
+    {
+        if (disable_alloc_)
+        {
+#if defined(_WIN32)
+            _aligned_free(p);
+#else
+            (::free)(p);
+#endif
+            return;
+        }
+
+        free(p);
     }
 
     virtual unpark_reason park_current_thread(bool is_timed,
@@ -1314,6 +1355,108 @@ inline void operator delete [] (void* p, size_t sz) noexcept
 #if defined(__clang__)
 #   pragma clang diagnostic pop
 #endif
+
+
+#if __cplusplus >= 201703L || defined(__STDCPP_ALIGNED_NEW__)
+#include <new>
+
+#if defined(__clang__)
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Winline-new-delete"
+#endif
+
+inline void* operator new (size_t size, std::align_val_t al) RL_THROW_SPEC(std::bad_alloc)
+{
+    if (rl::is_ctx())
+        return rl::ctx().alloc(size, static_cast<size_t>(al));
+    else
+    {
+#if defined(_WIN32)
+        void* p = _aligned_malloc(size, static_cast<size_t>(al));
+#else
+        void* p = nullptr;
+        size_t const alignment_val = static_cast<size_t>(al);
+        size_t const actual_align = (alignment_val < sizeof(void*)) ? sizeof(void*) : alignment_val;
+        if (::posix_memalign(&p, actual_align, size) != 0)
+            p = nullptr;
+#endif
+        if (!p)
+            throw std::bad_alloc();
+        return p;
+    }
+}
+
+inline void* operator new [] (size_t size, std::align_val_t al) RL_THROW_SPEC(std::bad_alloc)
+{
+    return operator new(size, al);
+}
+
+inline void* operator new (size_t size, std::align_val_t al, std::nothrow_t const&) noexcept
+{
+    try {
+        return operator new(size, al);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+inline void* operator new[](size_t size, std::align_val_t al, std::nothrow_t const&) noexcept
+{
+    try {
+        return operator new[](size, al);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+inline void operator delete (void* p, std::align_val_t al) noexcept
+{
+    if (!p) return;
+    if (rl::is_ctx())
+        rl::ctx().free(p, static_cast<size_t>(al));
+    else
+    {
+#if defined(_WIN32)
+        _aligned_free(p);
+#else
+        ::free(p);
+#endif
+    }
+}
+
+inline void operator delete [] (void* p, std::align_val_t al) noexcept
+{
+    operator delete(p, al);
+}
+
+inline void operator delete (void* p, std::align_val_t al, std::nothrow_t const&) noexcept
+{
+    operator delete(p, al);
+}
+
+inline void operator delete [](void* p, std::align_val_t al, std::nothrow_t const&) noexcept
+{
+    operator delete[](p, al);
+}
+
+inline void operator delete (void* p, size_t size, std::align_val_t al) noexcept
+{
+    (void)size;
+    operator delete(p, al);
+}
+
+inline void operator delete [] (void* p, size_t size, std::align_val_t al) noexcept
+{
+    (void)size;
+    operator delete[](p, al);
+}
+
+#if defined(__clang__)
+#   pragma clang diagnostic pop
+#endif
+
+#endif
+
 
 #define RL_NEW_PROXY rl::new_proxy($) % new
 #define RL_DELETE_PROXY rl::delete_proxy($) , delete
