@@ -274,13 +274,13 @@ public:
         }
     }
 
-    virtual void* alloc(size_t size, bool is_array, debug_info_param info)
+    virtual void* alloc(size_t size, bool is_array, debug_info_param info, size_t align = alignment)
     {
         disable_alloc_ += 1;
 #ifndef RL_GC
-        void* p = memory_.alloc(size);
+        void* p = memory_.alloc(size, align);
 #else
-        void* p = memory_.alloc(size, (void(*)(void*))0);
+        void* p = memory_.alloc(size, (void(*)(void*))0, align);
 #endif
         disable_alloc_ -= 1;
         RL_HIST_CTX(memory_alloc_event) {p, size, is_array} RL_HIST_END();
@@ -1212,6 +1212,11 @@ struct delete_proxy
 inline void* rl_malloc(size_t sz, debug_info_param info)
 {
     return ctx().alloc(sz, false, info);
+}
+
+inline void* rl_malloc(size_t sz, size_t align, debug_info_param info)
+{
+    return ctx().alloc(sz, false, info, align);
 }
 
 inline void* rl_calloc(size_t sz, size_t cnt, debug_info_param info)

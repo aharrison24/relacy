@@ -131,7 +131,7 @@ public:
     virtual void fail_test(char const* desc, test_result_e res, debug_info_param info) = 0;
     virtual void rl_until(char const* desc, debug_info_param info) = 0;
 
-    virtual void* alloc(size_t size, bool is_array, debug_info_param info) = 0;
+    virtual void* alloc(size_t size, bool is_array, debug_info_param info, size_t align = alignment) = 0;
 #ifdef RL_GC
     virtual void* alloc(size_t size, bool is_array, void(*dtor)(void*), debug_info_param info) = 0;
 #endif
